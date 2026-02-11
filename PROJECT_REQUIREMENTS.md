@@ -90,23 +90,93 @@ This is an interactive art installation that creates an intensely focused experi
 
 ---
 
-### 3. Consequence State (Video Playback)
+### 3. Consequence State (Media Presentation)
 
 **Sequence:**
 1. **First 2-5 seconds:**
-   - Display freeze-frame or 2-second clip from instant replay
-   - Shows participant pressing the button
-   - Captured from webcam buffer
+   - Display instant replay clip from webcam buffer
+   - Shows participant pressing the button (last 2-3 seconds captured)
+   - Simple freeze-frame effect: pause the replay at the moment of button press
+   - **Implementation:** OBS Instant Replay source plays the cached buffer, then freezes on last frame
 
-2. **Next 15 seconds:**
-   - Transition to pre-shot, artistically processed video
-   - Slow zoom-in on participant's eyes from still frame
-   - Text overlay appears:
-     ```
-     "You attempted to filter the world, yet became the object of scrutiny.
-     The clarity you sought is merely the reflection of self."
-     ```
-   - Background: Minimalist, pulsating sound-wave or data stream patterns
+2. **Next 15 seconds - Media Format Options:**
+
+   **Option A: p5.js (Recommended - Creative Coding Approach)**
+   - **Format:** HTML file with p5.js library for creative visual programming
+   - **Content:**
+     - Background: Programmatically generated (gradient, particles, abstract patterns)
+     - Main visual: Participant's face image (from instant replay) with creative effects
+     - Text: Philosophical message with custom typography and animations
+     - Effects: 
+       - Zoom and transform effects on participant's image
+       - Particle systems, data visualizations, or abstract patterns
+       - Custom animations and transitions
+       - Real-time visual effects (glitch, distortion, color manipulation)
+   - **Implementation:** OBS Browser Source loads local HTML file with p5.js
+   - **Pros:** 
+     - Perfect for interactive art installations
+     - Highly customizable visual effects
+     - Can create unique, artistic visuals programmatically
+     - Smooth animations and real-time rendering
+     - Large community and extensive documentation
+     - Can integrate with webcam/image data dynamically
+   - **Tools:** Any text editor, p5.js library (CDN or local)
+   - **Skills:** JavaScript basics, p5.js API (easy to learn)
+   - **Example Effects:**
+     - Slow zoom on participant's eyes with particle overlay
+     - Glitch/distortion effects on the image
+     - Data stream visualization (sound waves, data patterns)
+     - Abstract geometric patterns that respond to the image
+
+   **Option B: Static Image Sequence**
+   - **Format:** Series of PNG/JPG images (3-5 images)
+   - **Content:**
+     - Image 1: Participant's face (extracted from instant replay) or generic image
+     - Image 2: Same image with slight zoom
+     - Image 3: Further zoom on eyes
+     - Image 4: Full zoom with text overlay
+     - Image 5: Final state with full text
+   - **Implementation:** OBS Image Source, programmatically switch images every 3-4 seconds
+   - **Pros:** Very simple, no video editing
+   - **Tools:** Image editor (Photoshop, GIMP, or even online tools)
+
+   **Option C: Live Image Processing (Real-Time Effects)**
+   - **Format:** OBS filters applied to captured frame
+   - **Content:**
+     - Freeze frame from instant replay
+     - Apply OBS filters: Zoom, Color Correction, Blur edges
+     - Text source appears gradually
+     - Background: Solid color source
+   - **Implementation:** All in OBS, no external files needed
+   - **Pros:** Fully dynamic, uses participant's actual image
+   - **Cons:** Requires precise OBS filter configuration
+
+   **Option D: Animated GIF**
+   - **Format:** Single animated GIF file
+   - **Content:** Simple animation (zoom, fade, text appearance)
+   - **Implementation:** OBS Media Source plays GIF
+   - **Pros:** Simple, single file
+   - **Cons:** Limited quality, file size can be large
+
+   **Option E: Code-Generated Visuals**
+   - **Format:** Python script generating images/animations in real-time
+   - **Content:** Script processes instant replay frame, generates visual with text
+   - **Implementation:** Script outputs to image file, OBS Image Source reads it
+   - **Pros:** Fully customizable, can add effects programmatically
+   - **Tools:** Python with PIL/Pillow, OpenCV (optional)
+
+3. **Recommended Approach: p5.js (Option A)**
+   - Single HTML file with p5.js library (loaded via CDN or local file)
+   - Creative coding approach perfect for art installations
+   - Can load participant's image dynamically from instant replay
+   - Programmatic visual effects (zoom, particles, glitch, data visualization)
+   - Smooth animations and real-time rendering
+   - Highly customizable and artistic
+   - **OBS Setup:** Browser Source pointing to local HTML file
+   - **File Structure:**
+     - `consequence.html` - Main HTML file with p5.js sketch
+     - Optional: `sketch.js` - p5.js code (can be embedded in HTML)
+     - Optional: Image assets or data files
 
 3. **Final State:**
    - Display "Experience Ended"
@@ -127,11 +197,33 @@ This is an interactive art installation that creates an intensely focused experi
   - Instant Replay: Configured with 2-3 second buffer
 
 #### Scene 2: Consequence
-- **Sources:**
-  - Black screen (solid color source)
-  - Instant Replay Source: Plays captured buffer (first 2-5 seconds)
-  - Media Source: Pre-rendered consequence video (starts after replay)
-  - Text Overlay: Philosophical message (timed or embedded in video)
+- **Recommended Setup (p5.js):**
+  - **Sources:**
+    - Black screen (solid color source) - shown for 2 seconds
+    - Instant Replay Source: Plays captured buffer (2-3 seconds, shows participant pressing button)
+    - Browser Source: Loads local HTML file with p5.js sketch
+    - p5.js sketch handles: 
+      - Image loading and display (participant's face from instant replay)
+      - Creative visual effects (zoom, particles, glitch, data visualization)
+      - Text rendering with custom typography
+      - Real-time animations and transitions
+    - **Note:** p5.js can load participant's image dynamically if extracted from instant replay, or use a generic image
+  
+- **Alternative Setup (Image Sequence):**
+  - **Sources:**
+    - Black screen (solid color source) - shown for 2 seconds
+    - Instant Replay Source: Plays captured buffer first
+    - Image Source: Switches between 3-5 images programmatically (via script or OBS scene transitions)
+    - Text Source: Philosophical message (appears on final image)
+    - Optional: Apply zoom filter to image source
+  
+- **Alternative Setup (Live Processing):**
+  - **Sources:**
+    - Solid color background (black/dark gray)
+    - Instant Replay Source: Freezes on last frame
+    - Apply OBS filters: Zoom, Color Correction, Blur
+    - Text Source: Philosophical message (fades in gradually)
+    - All effects applied in real-time, no external files needed
 
 #### Hotkey Configuration
 - **USB Button (e.g., F12):**
@@ -139,22 +231,99 @@ This is an interactive art installation that creates an intensely focused experi
   2. Immediately switch to Scene 2 (Consequence)
   3. Stop all audio in Guidance Scene
 
-### Video Production Requirements
+### Consequence Media Requirements
 
-**Consequence Video Template:**
-- **Format:** MP4, H.264 or similar (OBS-compatible)
-- **Structure:**
-  - First 2 seconds: Black screen (placeholder for instant replay insertion)
-  - Next 15 seconds: Artistically processed video with:
-    - Slow zoom effect on participant's eyes
-    - Text overlay
-    - Background animations (sound waves/data streams)
-- **Total Duration:** ~17-20 seconds
+**Option A: p5.js (Recommended - Creative Coding)**
+- **Format:** Single HTML file with p5.js library
+- **File Structure:**
+  - `consequence.html` - Main HTML file with p5.js sketch
+  - Optional: `sketch.js` - p5.js code (can be embedded in HTML or separate file)
+  - Optional: Image assets (participant's face, generic images, fonts)
+  - p5.js library loaded via CDN: `<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.js"></script>`
+- **Content:**
+  - **Background:** Programmatically generated (gradient, particles, abstract patterns)
+  - **Main Visual:** 
+    - `loadImage()` to display participant's face (from instant replay) or generic image
+    - `image()` with `scale()` and `translate()` for zoom effects
+    - Creative filters: `filter()`, `tint()`, custom pixel manipulation
+  - **Text:** `text()` function with custom fonts and animations
+  - **Effects Examples:**
+    - Particle systems (`particles.js` or custom)
+    - Data visualization (sound waves, data streams)
+    - Glitch effects (pixel manipulation, color channel separation)
+    - Geometric patterns (circles, lines, shapes)
+  - **Philosophical Message:**
+    ```
+    "You attempted to filter the world, yet became the object of scrutiny.
+    The clarity you sought is merely the reflection of self."
+    ```
+- **Production Tools:** 
+  - Any text editor (VS Code recommended with p5.js extensions)
+  - p5.js web editor for testing: https://editor.p5js.org/
+- **Skills Required:** 
+  - Basic JavaScript
+  - p5.js API (well-documented, beginner-friendly)
+  - Creative coding concepts (drawing, animation, image manipulation)
+- **Pros:** 
+  - Perfect for interactive art installations
+  - Highly customizable and artistic
+  - Real-time rendering and smooth animations
+  - Large community and extensive examples
+  - Can create unique visual effects programmatically
+  - Easy to iterate and experiment
+- **Learning Resources:**
+  - p5.js official documentation: https://p5js.org/reference/
+  - Coding Train YouTube channel (p5.js tutorials)
+  - p5.js examples and reference
+
+**Option B: Image Sequence**
+- **Format:** 3-5 PNG/JPG images
+- **Image Specifications:**
+  - Resolution: Match OBS output resolution (e.g., 1920x1080)
+  - Format: PNG (for transparency) or JPG
+  - Content: Progressive zoom on face/eyes, text overlay on final image
+- **Production Tools:** Image editor (Photoshop, GIMP, Canva, or online tools)
+- **Skills Required:** Basic image editing
+- **Pros:** Very simple, no coding needed
+- **Cons:** Requires manual image creation, less dynamic
+
+**Option C: Live OBS Processing (No External Files)**
+- **Format:** Real-time OBS filters and sources
+- **Setup:**
+  - Freeze instant replay frame
+  - Apply OBS built-in filters: Zoom, Color Correction, Blur
+  - Add Text Source with fade-in
+- **Production Tools:** None (all in OBS)
+- **Skills Required:** OBS filter configuration
+- **Pros:** Fully dynamic, uses actual participant image, no files needed
+- **Cons:** Requires precise OBS setup, less control over timing
+
+**Option D: Animated GIF**
+- **Format:** Single animated GIF file
+- **Specifications:**
+  - Duration: 15-20 seconds
+  - Resolution: Match OBS output
+  - Content: Simple zoom/fade animation with text
+- **Production Tools:** GIF animator (Photoshop, online GIF makers)
+- **Pros:** Single file, simple
+- **Cons:** Limited quality, large file size, less flexible
+
+**Option E: Code-Generated Visuals**
+- **Format:** Python script generating images/animations
+- **Implementation:**
+  - Script extracts frame from instant replay
+  - Processes image (zoom, effects)
+  - Generates final image with text overlay
+  - Outputs to file that OBS reads
+- **Production Tools:** Python with PIL/Pillow, OpenCV (optional)
+- **Skills Required:** Basic Python programming
+- **Pros:** Fully customizable, programmatic effects
+- **Cons:** Requires programming knowledge
 
 **Instant Replay Configuration:**
 - Buffer duration: 2-3 seconds minimum
-- Output format: Matched to consequence video specs
-- Seamless transition from replay to template video
+- Output format: Standard video (OBS default settings)
+- **Transition:** After instant replay plays, OBS switches to consequence video/scene
 
 ---
 
@@ -208,10 +377,44 @@ This is an interactive art installation that creates an intensely focused experi
   - Node.js: `obs-websocket-js` library
   - Additional libraries for USB button input (e.g., `pynput`, `keyboard` for Python)
 
+**If Using p5.js for Consequence State (Option A):**
+- **Web Browser** (for development/testing)
+  - Modern browser (Chrome, Firefox, Safari, Edge)
+  - p5.js library (loaded via CDN, no installation needed)
+- **Development Tools:**
+  - Text editor (VS Code recommended)
+  - Optional: p5.js web editor (https://editor.p5js.org/) for quick prototyping
+  - Optional: Local web server for testing (Python's `http.server`, Node's `http-server`, or VS Code Live Server extension)
+
 ### Media Assets Required
+
+**Required for All Options:**
 - Disorienting audio track (looping MP3/WAV)
-- Consequence video template (MP4, 17-20 seconds)
 - Guidance text (can be generated in OBS or as image overlay)
+
+**Option-Specific Assets:**
+
+**If using p5.js (Option A - Recommended):**
+- `consequence.html` file with p5.js sketch
+- Optional: `sketch.js` file (can be embedded in HTML)
+- Optional: Generic eye/face image (stock photo) if not using participant's image
+- Optional: Custom fonts (TTF/OTF) for text styling
+- p5.js library (loaded via CDN, no download needed)
+- Optional: Additional p5.js libraries (e.g., p5.sound for audio visualization)
+
+**If using Image Sequence (Option B):**
+- 3-5 PNG/JPG images (progressive zoom sequence)
+- Text overlay can be embedded in final image or added via OBS Text Source
+
+**If using Live Processing (Option C):**
+- No additional media files needed (uses instant replay frame)
+
+**If using Animated GIF (Option D):**
+- Single animated GIF file (15-20 seconds)
+
+**If using Code-Generated (Option E):**
+- Python script for image processing
+- Optional: Generic image assets for processing
 
 ### Hardware Integration
 - USB button driver (should work as standard keyboard input)
