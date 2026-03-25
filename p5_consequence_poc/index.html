@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Consequence POC (p5.js)</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+        overflow: hidden;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
+          Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        color: #fff;
+      }
+      .hint {
+        position: fixed;
+        left: 12px;
+        bottom: 12px;
+        font-size: 12px;
+        line-height: 1.3;
+        opacity: 0.85;
+        user-select: none;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hint">
+      Keys: <code>H</code> = headphones on/off<br />
+      Mouse: press = red button
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script src="./sketch.js"></script>
+  </body>
+</html>
+
