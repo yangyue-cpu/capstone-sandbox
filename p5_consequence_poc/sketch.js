@@ -14,10 +14,15 @@ const STATE = {
 let mode = STATE.STATE0;
 let modeStartMs = 0;
 let headphonesOn = false;
+let consequenceVideo = null;
+let state2VideoStarted = false;
+let errorSound = null;
 
 // For small UI pulses in State 2 wrong-button presses.
 let wrongAnswerFlashUntil = 0;
 let lastHeadphonesToggleAt = 0; // debounce to avoid double-triggering from multiple handlers
+let state2WrongPressCount = 0;
+let state2QuestionVisible = false;
 
 // Durations (ms) to match the brainstorm: 5s blank, then 5s text fade-in; End screens 10s.
 const STATE2_BLANK_MS = 5000;
@@ -25,9 +30,23 @@ const STATE2_VIDEO_MS = 5000;
 const END_MS = 10000;
 
 function enterMode(nextMode) {
+  const prevMode = mode;
   mode = nextMode;
   modeStartMs = millis();
   wrongAnswerFlashUntil = 0;
+  state2WrongPressCount = 0;
+  state2QuestionVisible = false;
+
+  if (nextMode === STATE.STATE2) {
+    state2VideoStarted = false;
+    if (consequenceVideo) {
+      consequenceVideo.stop();
+      consequenceVideo.time(0);
+    }
+  } else if (prevMode === STATE.STATE2 && consequenceVideo) {
+    consequenceVideo.stop();
+    consequenceVideo.time(0);
+  }
 
   // In the "End" states the headphones should effectively be off.
   if (mode === STATE.END1 || mode === STATE.END2) headphonesOn = false;
@@ -42,6 +61,13 @@ function setup() {
   createCanvas(w, h);
   pixelDensity(1);
   textFont("system-ui");
+  consequenceVideo = createVideo(["../assets/video.mp4"]);
+  consequenceVideo.hide();
+  consequenceVideo.pause();
+  consequenceVideo.volume(1);
+  consequenceVideo.elt.loop = true;
+  errorSound = new Audio("../assets/error.mp3");
+  errorSound.preload = "auto";
   enterMode(STATE.STATE0);
 
   // Global handler so `H` works even if the canvas isn't focused.
@@ -72,8 +98,10 @@ function mousePressed() {
   if (mode === STATE.STATE1) {
     enterMode(STATE.STATE2);
   } else if (mode === STATE.STATE2) {
-    // "Wrong answer": keep the same state; flash a small label.
-    wrongAnswerFlashUntil = millis() + 900;
+    // "Wrong answer": keep the same state and play the error sound.
+    playErrorSound();
+    state2WrongPressCount += 1;
+    if (state2WrongPressCount >= 5) state2QuestionVisible = true;
   }
 }
 
@@ -264,8 +292,8 @@ function drawState1() {
 function drawState2() {
   // Sequence:
   // - 0-5s: black screen
-  // - 5-10s: "video loop" placeholder
-  // - after 10s: fade-in question text while video placeholder continues
+  // - after 5s: full-screen looped video
+  // - after 5+ wrong presses: show persistent question text until leaving State 2
   const t = millis() - modeStartMs;
 
   // 1) 0-5s black with subtle flicker
@@ -278,102 +306,54 @@ function drawState2() {
     return;
   }
 
-  // 2) 5-10s: show placeholder "video loop"
-  const videoT = constrain(t - STATE2_BLANK_MS, 0, STATE2_VIDEO_MS);
-  const afterVideo = t >= STATE2_BLANK_MS + STATE2_VIDEO_MS;
+  // 2) show full-screen video (continuous loop after the blank phase)
+  const videoPhase = t >= STATE2_BLANK_MS;
+  if (!videoPhase) return;
+  drawState2Video();
 
-  drawVideoLoopPlaceholder(videoT, afterVideo);
-
-  // Wrong answer flash label
-  if (millis() < wrongAnswerFlashUntil) {
+  // 3) show question only after 5+ wrong button presses; keep it visible.
+  if (state2QuestionVisible) {
     fill(255);
-    textAlign(CENTER, CENTER);
-    textSize(18);
-    text("Wrong answer (no effect)", width / 2, height * 0.18);
-  }
-
-  // 3) after 10s: fade in text question
-  if (afterVideo) {
-    const fadeElapsed = millis() - (modeStartMs + STATE2_BLANK_MS + STATE2_VIDEO_MS);
-    const alpha = constrain(fadeElapsed / 1200, 0, 1);
-
-    fill(255, 255 * alpha);
     textAlign(CENTER, CENTER);
     textSize(26);
     text("How many times have you pressed, hoping for control?", width / 2, height * 0.86);
   }
 }
 
-function drawVideoLoopPlaceholder(videoT, afterVideo) {
-  // Placeholder visuals: "everyday buttons" pressed by anonymous hands.
-  // We animate a set of rectangles with a loop based on time.
-  const loopMs = 1600;
-  const loopIndex = floor(videoT / loopMs);
-  const localT = (videoT % loopMs) / loopMs; // 0..1
-
-  // Frame title
-  fill(255, 170);
-  noStroke();
-  textAlign(CENTER, TOP);
-  textSize(18);
-  text("Video Placeholder: everyday buttons loop", width / 2, 18);
-
-  // Background overlay
-  noStroke();
-  fill(255, 255, 255, afterVideo ? 22 : 14);
-  rectMode(CENTER);
-  rect(width / 2, height / 2, width * 0.74, height * 0.54, 24);
-
-  // Create 6 button icons
-  const cols = 3;
-  const rows = 2;
-  const startX = width * 0.2;
-  const startY = height * 0.32;
-  const cellW = width * 0.2;
-  const cellH = height * 0.18;
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const i = r * cols + c;
-      const cx = startX + c * cellW + cellW / 2;
-      const cy = startY + r * cellH + cellH / 2;
-
-      const pressed = ((loopIndex + i) % 2 === 0);
-      const pressAmt = pressed ? (0.08 + 0.1 * localT) : 0.0;
-
-      // "Hand" hint (simple triangle)
-      fill(255, 140);
-      noStroke();
-      triangle(cx - 28, cy + 38, cx + 0, cy + 38, cx - 14, cy + 16);
-
-      // Button
-      stroke(255, 120);
-      strokeWeight(2);
-      fill(50, 50, 70, 180);
-      rectMode(CENTER);
-      rect(cx, cy + pressAmt * 70, cellW * 0.62, cellH * 0.58, 14);
-
-      fill(255);
-      noStroke();
-      textAlign(CENTER, CENTER);
-      textSize(14);
-      text(getButtonLabel(i), cx, cy + pressAmt * 70);
+function playErrorSound() {
+  if (!errorSound) return;
+  try {
+    errorSound.pause();
+    errorSound.currentTime = 0;
+    const playPromise = errorSound.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {
+        // Autoplay policies can reject playback in some browsers.
+      });
     }
+  } catch (_err) {
+    // Ignore audio playback errors and keep interaction uninterrupted.
   }
-
-  // subtle progress line
-  stroke(255, 60);
-  strokeWeight(2);
-  noFill();
-  line(width * 0.14, height * 0.74, width * 0.86, height * 0.74);
-
-  stroke(255, 200);
-  line(width * 0.14, height * 0.74, width * (0.14 + 0.72 * localT), height * 0.74);
 }
 
-function getButtonLabel(i) {
-  const labels = ["ELEVATOR", "CROSS", "SKIP AD", "CANCEL", "OK", "START"];
-  return labels[i % labels.length];
+function drawState2Video() {
+  if (!consequenceVideo) return;
+
+  if (!state2VideoStarted) {
+    consequenceVideo.time(0);
+    consequenceVideo.play();
+    state2VideoStarted = true;
+  }
+
+  // Draw video using "cover" behavior so the canvas is fully filled.
+  const vw = consequenceVideo.elt.videoWidth || width;
+  const vh = consequenceVideo.elt.videoHeight || height;
+  const scale = Math.max(width / vw, height / vh);
+  const dw = vw * scale;
+  const dh = vh * scale;
+  const dx = (width - dw) * 0.5;
+  const dy = (height - dh) * 0.5;
+  image(consequenceVideo, dx, dy, dw, dh);
 }
 
 function drawEnd1() {
