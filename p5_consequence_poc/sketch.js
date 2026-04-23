@@ -39,16 +39,9 @@ function enterMode(nextMode) {
 function setup() {
   const w = Math.max(1, Math.floor(window.innerWidth || windowWidth || 1280));
   const h = Math.max(1, Math.floor(window.innerHeight || windowHeight || 720));
-  const cnv = createCanvas(w, h);
+  createCanvas(w, h);
   pixelDensity(1);
   textFont("system-ui");
-  // Some embedded browser sources don't keep focus on the canvas; ensure it can receive key input.
-  const elt = cnv && cnv.elt ? cnv.elt : null;
-  if (elt) {
-    elt.tabIndex = 0;
-    elt.style.outline = "none";
-    elt.focus();
-  }
   enterMode(STATE.STATE0);
 
   // Global handler so `H` works even if the canvas isn't focused.
