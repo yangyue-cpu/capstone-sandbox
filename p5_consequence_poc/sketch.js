@@ -113,8 +113,6 @@ function draw() {
 
   drawBoothBackground();
   drawTopRightStateLabel();
-  drawButton();
-  drawHeadphonesIndicator();
 
   if (mode === STATE.STATE0) drawState0();
   if (mode === STATE.STATE1) drawState1();
