@@ -17,6 +17,8 @@ let headphonesOn = false;
 let consequenceVideo = null;
 let state2VideoStarted = false;
 let errorSound = null;
+let state1Stars = [];
+let end1Stars = [];
 
 // For small UI pulses in State 2 wrong-button presses.
 let wrongAnswerFlashUntil = 0;
@@ -28,6 +30,8 @@ let state2QuestionVisible = false;
 const STATE2_BLANK_MS = 5000;
 const STATE2_VIDEO_MS = 5000;
 const END_MS = 10000;
+const STATE1_FADE_MS = 3000;
+const END1_FADE_MS = 5000;
 
 function enterMode(nextMode) {
   const prevMode = mode;
@@ -61,13 +65,15 @@ function setup() {
   createCanvas(w, h);
   pixelDensity(1);
   textFont("system-ui");
-  consequenceVideo = createVideo(["../assets/video.mp4"]);
+  consequenceVideo = createVideo(["./assets/video.mp4"]);
   consequenceVideo.hide();
   consequenceVideo.pause();
   consequenceVideo.volume(1);
   consequenceVideo.elt.loop = true;
-  errorSound = new Audio("../assets/error.mp3");
+  errorSound = new Audio("./assets/error.mp3");
   errorSound.preload = "auto";
+  initState1Stars();
+  initEnd1Stars();
   enterMode(STATE.STATE0);
 
   // Global handler so `H` works even if the canvas isn't focused.
@@ -87,6 +93,8 @@ function windowResized() {
   const w = Math.max(1, Math.floor(window.innerWidth || windowWidth || 1280));
   const h = Math.max(1, Math.floor(window.innerHeight || windowHeight || 720));
   resizeCanvas(w, h);
+  initState1Stars();
+  initEnd1Stars();
 }
 
 function keyPressed() {
@@ -143,6 +151,7 @@ function handleHeadphonesToggle() {
 }
 
 function drawTopRightStateLabel() {
+  if (mode === STATE.STATE1 || mode === STATE.END1) return;
   const x = width - 14;
   const y = 16;
   const padX = 10;
@@ -173,7 +182,7 @@ function drawBoothBackground() {
   if (mode === STATE.STATE0) {
     background(8, 8, 12);
   } else if (mode === STATE.STATE1) {
-    background(8, 8, 12);
+    background(0);
   } else if (mode === STATE.STATE2) {
     background(0);
   } else {
@@ -268,23 +277,52 @@ function drawState0() {
 }
 
 function drawState1() {
-  // Guidance text (from brainstorm, line breaks preserved).
-  const guidance = [
-    "This world is filled with noise.",
-    "Truth is buried beneath it.",
-    "Press the button to filter everything, confronting the core.",
-    "Or leave",
-  ];
+  push();
+  translate(width / 2, height / 2);
+  for (const star of state1Stars) {
+    star.update(10);
+    star.show();
+  }
+  pop();
 
-  fill(255);
-  textAlign(LEFT, TOP);
-  textSize(22);
+  let alphaVal = map(millis() - modeStartMs, 0, STATE1_FADE_MS, 0, 255);
+  alphaVal = constrain(alphaVal, 0, 255);
 
-  const boxX = width * 0.14;
-  const boxY = height * 0.14;
-  const boxW = width * 0.72;
+  textAlign(CENTER, CENTER);
+  noStroke();
+  textFont("Cabin, system-ui, sans-serif");
 
-  drawTextBlock(guidance.join("\n"), boxX, boxY, boxW, 28);
+  fill(255, alphaVal);
+  textSize(24);
+  text("This world is filled with noise.", width / 2, height / 2 - 80);
+
+  fill(255, alphaVal);
+  textSize(24);
+  text("Truth is buried beneath it.", width / 2, height / 2 - 40);
+
+  fill(255, alphaVal);
+  textSize(20);
+  text("Press the button to filter everything, confronting the core.", width / 2, height / 2);
+
+  fill(200, alphaVal);
+  textSize(20);
+  text("Or leave.", width / 2, height / 2 + 30);
+}
+
+function initState1Stars() {
+  state1Stars = [];
+  const starCount = Math.max(1, floor((width * height) / 3000));
+  for (let i = 0; i < starCount; i++) {
+    state1Stars.push(new State1Star());
+  }
+}
+
+function initEnd1Stars() {
+  end1Stars = [];
+  const starCount = Math.max(1, floor((width * height) / 3000));
+  for (let i = 0; i < starCount; i++) {
+    end1Stars.push(new End1Star());
+  }
 }
 
 function drawState2() {
@@ -339,8 +377,33 @@ function drawState2Video() {
 
   if (!state2VideoStarted) {
     consequenceVideo.time(0);
-    consequenceVideo.play();
-    state2VideoStarted = true;
+    const playPromise = consequenceVideo.play();
+    if (playPromise && typeof playPromise.then === "function") {
+      playPromise
+        .then(() => {
+          state2VideoStarted = true;
+        })
+        .catch(() => {
+          // Keep retrying on subsequent frames if the browser blocks play().
+        });
+    } else {
+      // Older behavior: mark started and let paused-state check below recover.
+      state2VideoStarted = true;
+    }
+  }
+
+  // Recovery path: if playback stalls or was blocked earlier, try again.
+  if (consequenceVideo.elt && consequenceVideo.elt.paused) {
+    const retryPromise = consequenceVideo.play();
+    if (retryPromise && typeof retryPromise.then === "function") {
+      retryPromise
+        .then(() => {
+          state2VideoStarted = true;
+        })
+        .catch(() => {
+          // Ignore and keep trying while in State 2.
+        });
+    }
   }
 
   // Draw video using "cover" behavior so the canvas is fully filled.
@@ -355,18 +418,23 @@ function drawState2Video() {
 }
 
 function drawEnd1() {
-  const elapsed = millis() - modeStartMs;
-  // Gentle pulse on the text.
-  const alpha = constrain(elapsed / 600, 0, 1) * 255;
+  push();
+  translate(width / 2, height / 2);
+  for (const star of end1Stars) {
+    star.update(2);
+    star.show();
+  }
+  pop();
 
+  const alpha = constrain(map(millis() - modeStartMs, 0, END1_FADE_MS, 0, 255), 0, 255);
+
+  noStroke();
+  textFont("Cabin, system-ui, sans-serif");
   fill(255, alpha);
   textAlign(CENTER, CENTER);
-  textSize(28);
-  text("You MAY escape from the WORLD,\nbut you NEVER escape from YOURSELF", width / 2, height * 0.46);
-
-  fill(255, alpha * 0.7);
-  textSize(14);
-  text("Returning shortly...", width / 2, height * 0.68);
+  textSize(24);
+  text("You MAY escape from the WORLD,", width / 2, height / 2 - 40);
+  text("but you NEVER escape from YOURSELF", width / 2, height / 2);
 }
 
 function drawEnd2() {
@@ -423,5 +491,79 @@ function flickerBackground() {
   const flick = (sin(t / 70) * 0.5 + 0.5) * 18;
   fill(flick);
   rect(0, 0, width, height);
+}
+
+class State1Star {
+  constructor() {
+    this.x = random(-width, width);
+    this.y = random(-height, height);
+    this.z = random(width);
+    this.pz = this.z;
+  }
+
+  update(speed) {
+    this.z -= speed;
+    if (this.z < 1) {
+      this.z = width;
+      this.x = random(-width, width);
+      this.y = random(-height, height);
+      this.pz = this.z;
+    }
+  }
+
+  show() {
+    fill(255);
+    noStroke();
+
+    const sx = map(this.x / this.z, 0, 1, 0, width);
+    const sy = map(this.y / this.z, 0, 1, 0, height);
+    const r = map(this.z, 0, width, 8, 0);
+    ellipse(sx, sy, r, r);
+
+    const px = map(this.x / this.pz, 0, 1, 0, width);
+    const py = map(this.y / this.pz, 0, 1, 0, height);
+    this.pz = this.z;
+
+    stroke(255, 50);
+    line(sx, sy, px, py);
+  }
+}
+
+class End1Star {
+  constructor() {
+    this.x = random(-width, width);
+    this.y = random(-height, height);
+    this.z = random(width);
+    this.pz = this.z;
+  }
+
+  update(speed) {
+    this.z -= speed;
+    if (this.z < 1) {
+      this.z = width;
+      this.x = random(-width, width);
+      this.y = random(-height, height);
+      this.pz = this.z;
+    }
+  }
+
+  show() {
+    const blue = color(37, 45, 108);
+    fill(blue);
+    noStroke();
+
+    const sx = map(this.x / this.z, 0, 1, 0, width);
+    const sy = map(this.y / this.z, 0, 1, 0, height);
+    const r = map(this.z, 0, width, 8, 0);
+    ellipse(sx, sy, r, r);
+
+    const px = map(this.x / this.pz, 0, 1, 0, width);
+    const py = map(this.y / this.pz, 0, 1, 0, height);
+    this.pz = this.z;
+
+    stroke(37, 45, 108, 50);
+    strokeWeight(2);
+    line(sx, sy, px, py);
+  }
 }
 
