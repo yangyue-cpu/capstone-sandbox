@@ -14,11 +14,17 @@ const STATE = {
 let mode = STATE.STATE0;
 let modeStartMs = 0;
 let headphonesOn = false;
+let appFont = null;
 let consequenceVideo = null;
 let state2VideoStarted = false;
 let errorSound = null;
+let state1Noise = null;
+let state2SkipImage = null;
+let state0TitleImage = null;
+let state0Stars = [];
 let state1Stars = [];
 let end1Stars = [];
+let end2Stars = [];
 
 // For small UI pulses in State 2 wrong-button presses.
 let wrongAnswerFlashUntil = 0;
@@ -32,6 +38,11 @@ const STATE2_VIDEO_MS = 5000;
 const END_MS = 10000;
 const STATE1_FADE_MS = 3000;
 const END1_FADE_MS = 5000;
+const END2_FADE_MS = 5000;
+
+function preload() {
+  appFont = loadFont("./assets/Cabin-SemiBold.ttf");
+}
 
 function enterMode(nextMode) {
   const prevMode = mode;
@@ -40,6 +51,12 @@ function enterMode(nextMode) {
   wrongAnswerFlashUntil = 0;
   state2WrongPressCount = 0;
   state2QuestionVisible = false;
+
+  if (nextMode === STATE.STATE1) {
+    playState1Noise();
+  } else {
+    stopState1Noise();
+  }
 
   if (nextMode === STATE.STATE2) {
     state2VideoStarted = false;
@@ -64,7 +81,7 @@ function setup() {
   const h = Math.max(1, Math.floor(window.innerHeight || windowHeight || 720));
   createCanvas(w, h);
   pixelDensity(1);
-  textFont("system-ui");
+  textFont(appFont);
   consequenceVideo = createVideo(["./assets/video.mp4"]);
   consequenceVideo.hide();
   consequenceVideo.pause();
@@ -72,8 +89,15 @@ function setup() {
   consequenceVideo.elt.loop = true;
   errorSound = new Audio("./assets/error.mp3");
   errorSound.preload = "auto";
+  state1Noise = new Audio("./assets/white-noise.wav");
+  state1Noise.preload = "auto";
+  state1Noise.loop = true;
+  state2SkipImage = loadImage("./assets/skip.png");
+  state0TitleImage = loadImage("./assets/tiltle.png");
+  initState0Stars();
   initState1Stars();
   initEnd1Stars();
+  initEnd2Stars();
   enterMode(STATE.STATE0);
 
   // Global handler so `H` works even if the canvas isn't focused.
@@ -93,8 +117,10 @@ function windowResized() {
   const w = Math.max(1, Math.floor(window.innerWidth || windowWidth || 1280));
   const h = Math.max(1, Math.floor(window.innerHeight || windowHeight || 720));
   resizeCanvas(w, h);
+  initState0Stars();
   initState1Stars();
   initEnd1Stars();
+  initEnd2Stars();
 }
 
 function keyPressed() {
@@ -151,7 +177,7 @@ function handleHeadphonesToggle() {
 }
 
 function drawTopRightStateLabel() {
-  if (mode === STATE.STATE1 || mode === STATE.END1) return;
+  if (mode === STATE.STATE0 || mode === STATE.STATE1 || mode === STATE.END1 || mode === STATE.END2) return;
   const x = width - 14;
   const y = 16;
   const padX = 10;
@@ -180,7 +206,7 @@ function drawTopRightStateLabel() {
 function drawBoothBackground() {
   // Default background changes slightly by state to make it obvious for testing.
   if (mode === STATE.STATE0) {
-    background(8, 8, 12);
+    background(0);
   } else if (mode === STATE.STATE1) {
     background(0);
   } else if (mode === STATE.STATE2) {
@@ -257,23 +283,43 @@ function drawHeadphonesIndicator() {
 }
 
 function drawState0() {
-  // Prompt to put on headphones.
-  const x = width / 2;
-  const y = height * 0.28;
+  push();
+  translate(width / 2, height / 2);
+  for (const star of state0Stars) {
+    star.update(10);
+    star.show();
+  }
+  pop();
+
+  drawState0TitleImage();
 
   textAlign(CENTER, CENTER);
+  noStroke();
+  textFont(appFont);
+
   fill(255);
-  textSize(26);
-  text("Put on the headphones", x, y);
+  textSize(30);
+  text("Put on the HEADPHONES", width / 2, height / 2 - 50);
+}
 
-  textSize(16);
-  fill(255, 220);
-  text("Press `H` to start", x, y + 30);
+function drawState0TitleImage() {
+  if (!state0TitleImage) return;
 
-  // Small note for the button.
-  fill(255, 160);
-  textSize(14);
-  text("Button is off until headphones are ON", x, y + 62);
+  const maxW = width * 0.68;
+  const scale = Math.min(1, maxW / state0TitleImage.width);
+  const dw = state0TitleImage.width * scale;
+  const dh = state0TitleImage.height * scale;
+  const dx = (width - dw) * 0.5;
+  const dy = height * 0.05;
+  image(state0TitleImage, dx, dy, dw, dh);
+}
+
+function initState0Stars() {
+  state0Stars = [];
+  const starCount = Math.max(1, floor((width * height) / 3000));
+  for (let i = 0; i < starCount; i++) {
+    state0Stars.push(new State1Star());
+  }
 }
 
 function drawState1() {
@@ -290,7 +336,7 @@ function drawState1() {
 
   textAlign(CENTER, CENTER);
   noStroke();
-  textFont("Cabin, system-ui, sans-serif");
+  textFont(appFont);
 
   fill(255, alphaVal);
   textSize(24);
@@ -325,6 +371,14 @@ function initEnd1Stars() {
   }
 }
 
+function initEnd2Stars() {
+  end2Stars = [];
+  const starCount = Math.max(1, floor((width * height) / 3000));
+  for (let i = 0; i < starCount; i++) {
+    end2Stars.push(new End1Star());
+  }
+}
+
 function drawState2() {
   // Sequence:
   // - 0-5s: black screen
@@ -335,10 +389,6 @@ function drawState2() {
   // 1) 0-5s black with subtle flicker
   if (t < STATE2_BLANK_MS) {
     flickerBackground();
-    fill(255, 60);
-    textAlign(CENTER, CENTER);
-    textSize(14);
-    text("Silence...", width / 2, height * 0.42);
     return;
   }
 
@@ -346,6 +396,8 @@ function drawState2() {
   const videoPhase = t >= STATE2_BLANK_MS;
   if (!videoPhase) return;
   drawState2Video();
+
+  if (!state2QuestionVisible) drawState2SkipImage();
 
   // 3) show question only after 5+ wrong button presses; keep it visible.
   if (state2QuestionVisible) {
@@ -370,6 +422,50 @@ function playErrorSound() {
   } catch (_err) {
     // Ignore audio playback errors and keep interaction uninterrupted.
   }
+}
+
+function playState1Noise() {
+  if (!state1Noise) return;
+  try {
+    if (state1Noise.paused) {
+      const playPromise = state1Noise.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(() => {
+          // Ignore browser playback rejections and keep state transitions intact.
+        });
+      }
+    }
+  } catch (_err) {
+    // Ignore audio playback errors and keep interaction uninterrupted.
+  }
+}
+
+function stopState1Noise() {
+  if (!state1Noise) return;
+  try {
+    state1Noise.pause();
+    state1Noise.currentTime = 0;
+  } catch (_err) {
+    // Ignore audio playback errors and keep interaction uninterrupted.
+  }
+}
+
+function drawState2SkipImage() {
+  if (!state2SkipImage) return;
+
+  const maxW = width * 0.5;
+  const baseScale = Math.min(1, maxW / state2SkipImage.width);
+  const pressProgress = constrain(state2WrongPressCount / 5, 0, 1);
+  const scaleBoost = 1 + pressProgress * 0.8;
+  const alpha = 255 * (1 - pressProgress * 0.45);
+  const dw = state2SkipImage.width * baseScale * scaleBoost;
+  const dh = state2SkipImage.height * baseScale * scaleBoost;
+  const dx = (width - dw) * 0.5;
+  const dy = height * 0.04;
+
+  tint(255, alpha);
+  image(state2SkipImage, dx, dy, dw, dh);
+  noTint();
 }
 
 function drawState2Video() {
@@ -429,7 +525,7 @@ function drawEnd1() {
   const alpha = constrain(map(millis() - modeStartMs, 0, END1_FADE_MS, 0, 255), 0, 255);
 
   noStroke();
-  textFont("Cabin, system-ui, sans-serif");
+  textFont(appFont);
   fill(255, alpha);
   textAlign(CENTER, CENTER);
   textSize(24);
@@ -438,17 +534,23 @@ function drawEnd1() {
 }
 
 function drawEnd2() {
-  const elapsed = millis() - modeStartMs;
-  const alpha = constrain(elapsed / 600, 0, 1) * 255;
+  push();
+  translate(width / 2, height / 2);
+  for (const star of end2Stars) {
+    star.update(2);
+    star.show();
+  }
+  pop();
 
+  const alpha = constrain(map(millis() - modeStartMs, 0, END2_FADE_MS, 0, 255), 0, 255);
+
+  noStroke();
+  textFont(appFont);
   fill(255, alpha);
   textAlign(CENTER, CENTER);
-  textSize(30);
-  text("True balance is not forced.\nIt is accepted.", width / 2, height * 0.48);
-
-  fill(255, alpha * 0.7);
-  textSize(14);
-  text("Returning shortly...", width / 2, height * 0.68);
+  textSize(24);
+  text("True balance is not forced.", width / 2, height / 2 - 40);
+  text("It is accepted.", width / 2, height / 2);
 }
 
 function drawTextBlock(content, x, y, w, lineH) {
