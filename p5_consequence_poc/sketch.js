@@ -1,5 +1,6 @@
 // Proof-of-concept for the installation state machine.
 // - Press `H` to toggle headphones on/off.
+// - Press `F` to toggle browser fullscreen.
 // - Press mouse to "press the button".
 // - No audio/video assets yet: we use placeholder text + simple animations.
 
@@ -109,8 +110,27 @@ function setup() {
     } else if (k === "r" || k === "R") {
       e.preventDefault();
       enterMode(STATE.STATE0);
+    } else if (k === "f" || k === "F") {
+      e.preventDefault();
+      toggleBrowserFullscreen();
     }
   });
+}
+
+function toggleBrowserFullscreen() {
+  const el = document.documentElement;
+  const active =
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.msFullscreenElement;
+  if (active) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if (exit) exit.call(document).catch(() => {});
+    return;
+  }
+  const req =
+    el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (req) req.call(el).catch(() => {});
 }
 
 function windowResized() {
@@ -125,7 +145,7 @@ function windowResized() {
 
 function keyPressed() {
   // p5 also provides keyPressed; keep this as a fallback.
-  if (key === "h" || key === "H" || key === "r" || key === "R") return;
+  if (key === "h" || key === "H" || key === "r" || key === "R" || key === "f" || key === "F") return;
 }
 
 function mousePressed() {
