@@ -32,6 +32,12 @@ let wrongAnswerFlashUntil = 0;
 let lastHeadphonesToggleAt = 0; // debounce to avoid double-triggering from multiple handlers
 let state2WrongPressCount = 0;
 let state2QuestionVisible = false;
+let serialPort = null;
+let serialReader = null;
+let serialConnectInFlight = false;
+let serialStatus = "Serial: disconnected";
+let serialLineCount = 0;
+let debugHintVisible = false;
 
 // Durations (ms) to match the brainstorm: 5s blank, then 5s text fade-in; End screens 10s.
 const STATE2_BLANK_MS = 5000;
@@ -100,6 +106,8 @@ function setup() {
   initEnd1Stars();
   initEnd2Stars();
   enterMode(STATE.STATE0);
+  const hintEl = document.querySelector(".hint");
+  if (hintEl) hintEl.style.display = "none";
 
   // Global handler so `H` works even if the canvas isn't focused.
   window.addEventListener("keydown", (e) => {
@@ -107,6 +115,12 @@ function setup() {
     if (k === "h" || k === "H") {
       e.preventDefault();
       handleHeadphonesToggle();
+    } else if (k === "d" || k === "D") {
+      e.preventDefault();
+      toggleDebugHintOverlay();
+    } else if (k === "c" || k === "C") {
+      e.preventDefault();
+      connectSerialFromUserGesture();
     } else if (k === "r" || k === "R") {
       e.preventDefault();
       enterMode(STATE.STATE0);
@@ -115,6 +129,21 @@ function setup() {
       toggleBrowserFullscreen();
     }
   });
+
+  // Attempt to reattach to a previously authorized serial device.
+  if ("serial" in navigator) {
+    navigator.serial.addEventListener("connect", () => {
+      logSerial("device connected");
+    });
+    navigator.serial.addEventListener("disconnect", () => {
+      logSerial("device disconnected");
+      serialStatus = "Serial: disconnected (device unplugged)";
+    });
+    reattachAuthorizedSerialPort();
+  } else {
+    serialStatus = "Serial: Web Serial unsupported";
+    logSerial("Web Serial API is not available in this browser");
+  }
 }
 
 function toggleBrowserFullscreen() {
@@ -145,7 +174,24 @@ function windowResized() {
 
 function keyPressed() {
   // p5 also provides keyPressed; keep this as a fallback.
-  if (key === "h" || key === "H" || key === "r" || key === "R" || key === "f" || key === "F") return;
+  if (
+    key === "h" ||
+    key === "H" ||
+    key === "d" ||
+    key === "D" ||
+    key === "r" ||
+    key === "R" ||
+    key === "f" ||
+    key === "F"
+  )
+    return;
+}
+
+function toggleDebugHintOverlay() {
+  debugHintVisible = !debugHintVisible;
+  const hintEl = document.querySelector(".hint");
+  if (!hintEl) return;
+  hintEl.style.display = debugHintVisible ? "block" : "none";
 }
 
 function mousePressed() {
@@ -184,7 +230,12 @@ function handleHeadphonesToggle() {
   // Ignore headphone toggles during End states; the booth auto-resets.
   if (mode === STATE.END1 || mode === STATE.END2) return;
 
-  headphonesOn = !headphonesOn;
+  setHeadphonesState(!headphonesOn);
+}
+
+function setHeadphonesState(nextOn) {
+  if (headphonesOn === nextOn) return;
+  headphonesOn = nextOn;
 
   // State transitions based on the brainstorm state machine.
   if (mode === STATE.STATE0 && headphonesOn) {
@@ -196,6 +247,153 @@ function handleHeadphonesToggle() {
   }
 }
 
+async function connectSerialFromUserGesture() {
+  logSerial("connect requested by user gesture");
+  if (!("serial" in navigator)) {
+    serialStatus = "Serial: Web Serial unsupported";
+    logSerial("cannot connect: Web Serial unsupported");
+    return;
+  }
+  if (serialConnectInFlight) return;
+  serialConnectInFlight = true;
+  serialStatus = "Serial: requesting port...";
+
+  try {
+    const selectedPort = await navigator.serial.requestPort();
+    logSerial("port selected from browser prompt", selectedPort?.getInfo?.() || {});
+    await openAndReadSerialPort(selectedPort);
+  } catch (err) {
+    logSerial("requestPort failed/cancelled", err);
+    serialStatus = "Serial: port selection cancelled";
+  } finally {
+    serialConnectInFlight = false;
+  }
+}
+
+async function reattachAuthorizedSerialPort() {
+  logSerial("checking previously authorized serial ports");
+  try {
+    const ports = await navigator.serial.getPorts();
+    logSerial(`authorized ports found: ${ports.length}`);
+    if (!ports.length) {
+      serialStatus = "Serial: disconnected (press C to connect)";
+      return;
+    }
+    logSerial("reattaching to first authorized port", ports[0]?.getInfo?.() || {});
+    await openAndReadSerialPort(ports[0]);
+  } catch (err) {
+    logSerial("reattach failed", err);
+    serialStatus = "Serial: reattach failed";
+  }
+}
+
+async function openAndReadSerialPort(port) {
+  // Close old reader/port first when reconnecting.
+  await closeSerial();
+  serialPort = port;
+  serialLineCount = 0;
+  logSerial("opening port @115200", serialPort?.getInfo?.() || {});
+  await serialPort.open({ baudRate: 115200 });
+  serialStatus = "Serial: connected @115200";
+  logSerial("port opened successfully");
+
+  const textDecoder = new TextDecoderStream();
+  serialPort.readable.pipeTo(textDecoder.writable).catch((err) => {
+    logSerial("pipeTo ended with error", err);
+  });
+  const lineReader = textDecoder.readable
+    .pipeThrough(new TransformStream(new LineBreakTransformer()))
+    .getReader();
+
+  serialReader = lineReader;
+
+  while (true) {
+    try {
+      const { value, done } = await serialReader.read();
+      if (done) {
+        logSerial("reader returned done=true");
+        break;
+      }
+      if (!value) continue;
+      handleSerialLine(value);
+    } catch (err) {
+      logSerial("serial read loop error", err);
+      break;
+    }
+  }
+
+  serialStatus = "Serial: disconnected (press C to reconnect)";
+  logSerial("read loop ended; closing serial");
+  await closeSerial();
+}
+
+function handleSerialLine(line) {
+  const msg = String(line || "").trim();
+  if (!msg) return;
+  serialLineCount += 1;
+  console.log(`[serial][line ${serialLineCount}] ${msg}`);
+
+  // Hardware meaning from your ESP32:
+  // - notify_item_off: headphones removed from stand => ON
+  // - notify_item_on: headphones returned to stand => OFF
+  if (msg === "notify_item_off") {
+    setHeadphonesState(true);
+  } else if (msg === "notify_item_on") {
+    setHeadphonesState(false);
+  }
+}
+
+async function closeSerial() {
+  if (serialReader) {
+    try {
+      await serialReader.cancel();
+    } catch (err) {
+      logSerial("reader cancel error", err);
+    }
+    try {
+      serialReader.releaseLock();
+    } catch (err) {
+      logSerial("reader releaseLock error", err);
+    }
+    serialReader = null;
+  }
+  if (serialPort) {
+    try {
+      await serialPort.close();
+      logSerial("port closed");
+    } catch (err) {
+      logSerial("port close error", err);
+    }
+    serialPort = null;
+  }
+}
+
+function logSerial(message, data) {
+  const ts = new Date().toISOString();
+  if (typeof data === "undefined") {
+    console.log(`[serial][${ts}] ${message}`);
+  } else {
+    console.log(`[serial][${ts}] ${message}`, data);
+  }
+}
+
+class LineBreakTransformer {
+  constructor() {
+    this.chunks = "";
+  }
+
+  transform(chunk, controller) {
+    this.chunks += chunk;
+    const lines = this.chunks.split(/\r?\n/);
+    this.chunks = lines.pop();
+    for (const line of lines) controller.enqueue(line);
+  }
+
+  flush(controller) {
+    if (this.chunks) controller.enqueue(this.chunks);
+  }
+}
+
 function drawTopRightStateLabel() {
   if (mode === STATE.STATE0 || mode === STATE.STATE1 || mode === STATE.END1 || mode === STATE.END2) return;
   const x = width - 14;
@@ -203,7 +401,7 @@ function drawTopRightStateLabel() {
   const padX = 10;
   const padY = 8;
 
-  const label = `${mode}\nHeadphones: ${headphonesOn ? "ON" : "OFF"}`;
+  const label = `${mode}\nHeadphones: ${headphonesOn ? "ON" : "OFF"}\n${serialStatus}`;
   const lines = label.split("\n");
 
   // Estimate background size.
