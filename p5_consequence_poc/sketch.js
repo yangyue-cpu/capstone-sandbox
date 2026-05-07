@@ -1,7 +1,7 @@
 // Proof-of-concept for the installation state machine.
 // - Press `H` to toggle headphones on/off.
 // - Press `F` to toggle browser fullscreen.
-// - Press mouse to "press the button".
+// - Press mouse or Space / Enter / F12 (typical USB keyboard button) for the red button.
 // - No audio/video assets yet: we use placeholder text + simple animations.
 
 const STATE = {
@@ -38,6 +38,16 @@ let serialConnectInFlight = false;
 let serialStatus = "Serial: disconnected";
 let serialLineCount = 0;
 let debugHintVisible = false;
+let lastMainButtonPressAt = 0;
+let errorSoundPrimed = false;
+
+const MAIN_BUTTON_DEBOUNCE_MS = 180;
+const MAIN_BUTTON_SERIAL_MESSAGES = new Set([
+  "notify_button_press",
+  "notify_red_button",
+  "button_press",
+  "button",
+]);
 
 // Durations (ms) to match the brainstorm: 5s blank, then 5s text fade-in; End screens 10s.
 const STATE2_BLANK_MS = 5000;
@@ -49,6 +59,18 @@ const END2_FADE_MS = 5000;
 
 function preload() {
   appFont = loadFont("./assets/Cabin-SemiBold.ttf");
+  state2SkipImage = loadImage("./assets/skip.png");
+  state0TitleImage = loadImage("./assets/tiltle.png");
+}
+
+function canDrawP5Image(img) {
+  if (!img || img.width <= 0 || img.height <= 0) return false;
+  const elt = img.elt;
+  if (elt instanceof HTMLImageElement) {
+    if (!elt.complete) return false;
+    if (elt.naturalWidth === 0 || elt.naturalHeight === 0) return false;
+  }
+  return true;
 }
 
 function enterMode(nextMode) {
@@ -61,6 +83,7 @@ function enterMode(nextMode) {
 
   if (nextMode === STATE.STATE1) {
     playState1Noise();
+    primeErrorSound();
   } else {
     stopState1Noise();
   }
@@ -99,8 +122,6 @@ function setup() {
   state1Noise = new Audio("./assets/white-noise.wav");
   state1Noise.preload = "auto";
   state1Noise.loop = true;
-  state2SkipImage = loadImage("./assets/skip.png");
-  state0TitleImage = loadImage("./assets/tiltle.png");
   initState0Stars();
   initState1Stars();
   initEnd1Stars();
@@ -109,26 +130,57 @@ function setup() {
   const hintEl = document.querySelector(".hint");
   if (hintEl) hintEl.style.display = "none";
 
-  // Global handler so `H` works even if the canvas isn't focused.
-  window.addEventListener("keydown", (e) => {
-    const k = e.key;
-    if (k === "h" || k === "H") {
-      e.preventDefault();
-      handleHeadphonesToggle();
-    } else if (k === "d" || k === "D") {
-      e.preventDefault();
-      toggleDebugHintOverlay();
-    } else if (k === "c" || k === "C") {
-      e.preventDefault();
-      connectSerialFromUserGesture();
-    } else if (k === "r" || k === "R") {
-      e.preventDefault();
-      enterMode(STATE.STATE0);
-    } else if (k === "f" || k === "F") {
-      e.preventDefault();
-      toggleBrowserFullscreen();
-    }
-  });
+  window.addEventListener(
+    "pointerdown",
+    () => {
+      primeErrorSound();
+    },
+    { once: true, passive: true }
+  );
+
+  // Capture phase: keyboard shortcuts work even when the canvas is not focused.
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      const mainBtn =
+        e.code === "Space" ||
+        e.code === "Enter" ||
+        e.code === "NumpadEnter" ||
+        e.code === "F12";
+      if (
+        mainBtn &&
+        !e.repeat &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        (mode === STATE.STATE1 || mode === STATE.STATE2) &&
+        !isTypingFocusTarget(e.target)
+      ) {
+        e.preventDefault();
+        handleMainButtonPress();
+        return;
+      }
+
+      const k = e.key;
+      if (k === "h" || k === "H") {
+        e.preventDefault();
+        handleHeadphonesToggle();
+      } else if (k === "d" || k === "D") {
+        e.preventDefault();
+        toggleDebugHintOverlay();
+      } else if (k === "c" || k === "C") {
+        e.preventDefault();
+        connectSerialFromUserGesture();
+      } else if (k === "r" || k === "R") {
+        e.preventDefault();
+        enterMode(STATE.STATE0);
+      } else if (k === "f" || k === "F") {
+        e.preventDefault();
+        toggleBrowserFullscreen();
+      }
+    },
+    true
+  );
 
   // Attempt to reattach to a previously authorized serial device.
   if ("serial" in navigator) {
@@ -173,12 +225,17 @@ function windowResized() {
 }
 
 function keyPressed() {
-  // p5 also provides keyPressed; keep this as a fallback.
+  // Handled on window (capture); avoid duplicate work if p5 fires too.
   if (
+    key === " " ||
+    key === "Enter" ||
+    key === "F12" ||
     key === "h" ||
     key === "H" ||
     key === "d" ||
     key === "D" ||
+    key === "c" ||
+    key === "C" ||
     key === "r" ||
     key === "R" ||
     key === "f" ||
@@ -195,10 +252,25 @@ function toggleDebugHintOverlay() {
 }
 
 function mousePressed() {
+  handleMainButtonPress();
+}
+
+function isTypingFocusTarget(target) {
+  const el = target instanceof Element ? target : null;
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return !!el.isContentEditable;
+}
+
+function handleMainButtonPress() {
+  const now = millis();
+  if (now - lastMainButtonPressAt < MAIN_BUTTON_DEBOUNCE_MS) return;
+  lastMainButtonPressAt = now;
+
   if (mode === STATE.STATE1) {
     enterMode(STATE.STATE2);
   } else if (mode === STATE.STATE2) {
-    // "Wrong answer": keep the same state and play the error sound.
     playErrorSound();
     state2WrongPressCount += 1;
     if (state2WrongPressCount >= 5) state2QuestionVisible = true;
@@ -340,6 +412,8 @@ function handleSerialLine(line) {
     setHeadphonesState(true);
   } else if (msg === "notify_item_on") {
     setHeadphonesState(false);
+  } else if (MAIN_BUTTON_SERIAL_MESSAGES.has(msg.toLowerCase())) {
+    handleMainButtonPress();
   }
 }
 
@@ -521,7 +595,7 @@ function drawState0() {
 }
 
 function drawState0TitleImage() {
-  if (!state0TitleImage) return;
+  if (!canDrawP5Image(state0TitleImage)) return;
 
   const maxW = width * 0.68;
   const scale = Math.min(1, maxW / state0TitleImage.width);
@@ -626,11 +700,38 @@ function drawState2() {
   }
 }
 
+function primeErrorSound() {
+  if (!errorSound || errorSoundPrimed) return;
+  const prevVol = errorSound.volume;
+  errorSound.volume = 0;
+  try {
+    errorSound.pause();
+    errorSound.currentTime = 0;
+    const playPromise = errorSound.play();
+    const finish = () => {
+      errorSound.pause();
+      errorSound.currentTime = 0;
+      errorSound.volume = prevVol > 0 ? prevVol : 1;
+      errorSoundPrimed = true;
+    };
+    if (playPromise && typeof playPromise.then === "function") {
+      playPromise.then(finish).catch(() => {
+        errorSound.volume = prevVol > 0 ? prevVol : 1;
+      });
+    } else {
+      finish();
+    }
+  } catch (_err) {
+    errorSound.volume = prevVol > 0 ? prevVol : 1;
+  }
+}
+
 function playErrorSound() {
   if (!errorSound) return;
   try {
     errorSound.pause();
     errorSound.currentTime = 0;
+    errorSound.volume = 1;
     const playPromise = errorSound.play();
     if (playPromise && typeof playPromise.catch === "function") {
       playPromise.catch(() => {
@@ -669,7 +770,7 @@ function stopState1Noise() {
 }
 
 function drawState2SkipImage() {
-  if (!state2SkipImage) return;
+  if (!canDrawP5Image(state2SkipImage)) return;
 
   const maxW = width * 0.5;
   const baseScale = Math.min(1, maxW / state2SkipImage.width);
@@ -681,9 +782,10 @@ function drawState2SkipImage() {
   const dx = (width - dw) * 0.5;
   const dy = height * 0.04;
 
+  push();
   tint(255, alpha);
   image(state2SkipImage, dx, dy, dw, dh);
-  noTint();
+  pop();
 }
 
 function drawState2Video() {
